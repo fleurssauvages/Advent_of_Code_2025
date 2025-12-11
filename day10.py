@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import numpy as np
 from collections import deque
-import sympy as sp
+from scipy.optimize import milp, LinearConstraint, Bounds
 
 f = open("2025/ressources/day10.txt", "r") #Open File
 lines = f.readlines() #Separate in lines
@@ -64,36 +64,32 @@ print("The total number of button presses is: {}".format(total_press))
 
 # Q2
 total_press = 0
-from itertools import product
 
-def find_min_positive_integer_solution(sol, params, search_range):
-    # search_range is something like range(0, 10)
-    if not params:
-        # No parameters → unique solution
-        x = [expr for expr in sol]
-        if all(v.is_integer() and v > 0 for v in x):
-            return [int(v) for v in x]
-        else:
-            return None
+def solve_integer_minimal(modified_button, voltage):
+    A = modified_button.T.astype(float)
+    b = voltage.astype(float)
 
-    best_x = None
-    best_val = np.inf
+    m, n = A.shape
 
-    for values in product(search_range, repeat=len(params)):
-        subs_dict = dict(zip(params, values))
-        x = [expr.subs(subs_dict) for expr in sol]
+    c = np.ones(n)
 
-        # Check integer & positive
-        if all(v.is_integer() and v > 0 for v in x):
-            total = sum(x)  # objective: minimal sum of entries
-            if total < best_val:
-                best_val = total
-                best_x = x
+    constraint = LinearConstraint(A, lb=b, ub=b)
 
-    if best_x is None:
+    bounds = Bounds(lb=np.zeros(n), ub=np.inf)
+
+    integrality = np.ones(n, dtype=int)
+
+    result = milp(c=c,
+                constraints=constraint,
+                bounds=bounds,
+                integrality=integrality)
+
+    if result.success:
+        return np.round(result.x).astype(int)
+    else:
         return None
 
-    return [int(v) for v in best_x]
+
 
 for led, button, voltage in zip(leds, buttons, voltages):
     modified_button = np.zeros((len(button), len(voltage)), dtype=int)
@@ -101,10 +97,8 @@ for led, button, voltage in zip(leds, buttons, voltages):
         new_button = np.zeros_like(voltage)
         new_button[list(b)] = 1
         modified_button[i] = new_button
-
-    A = sp.Matrix(modified_button.T)
-    b = sp.Matrix(voltage.T)
-    solution = sp.linsolve((A, b))
-    search_range = range(0, 1000)
-    x_min = find_min_positive_integer_solution(solution, False, search_range)
+    sol = solve_integer_minimal(modified_button, voltage)
+    presses = np.sum(sol)
+    total_press += presses
+    
 print("The total number of button presses for the correct voltage is: {}".format(total_press))
